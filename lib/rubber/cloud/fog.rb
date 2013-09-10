@@ -30,7 +30,8 @@ module Rubber
                                                     :availability_zone => options[:availability_zone],
                                                     :key_name => env.key_name,
                                                     :vpc_id => options[:vpc_id],
-                                                    :subnet_id => options[:subnet_id])
+                                                    :subnet_id => options[:subnet_id],
+                                                    :tenancy => options[:tenancy])
         instance_id = response.id
         return instance_id
       end

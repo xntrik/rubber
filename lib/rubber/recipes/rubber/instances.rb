@@ -274,6 +274,29 @@ namespace :rubber do
     ami_type = cloud_env.image_type
     availability_zone = env.availability_zone
 
+    vpc_id = env.vpc.id
+    subnet_id = nil
+    tenancy = 'default'
+    first_subnet_role = nil
+    first_tenancy_role = nil
+    role_names.each do |role|
+      if env.vpc.roles["#{role}"]
+        if env.vpc.roles["#{role}"].subnet_id
+          raise "Two subnets defined for the same server with role: [#{first_subnet_role}: #{subnet_id}, #{role}: #{env.vpc.roles["#{role}"].subnet_id}]" if subnet_id
+          first_subnet_role = role
+          subnet_id = env.vpc.roles["#{role}"].subnet_id
+        end
+
+        if env.vpc.roles["#{role}"].tenancy
+          raise "Tenancy set in two different roles: [#{first_tenancy_role}, #{role}]" if first_tenancy_role
+          first_tenancy_role = role
+          tenancy = env.vpc.roles["#{role}"].tenancy
+        end
+      end
+    end
+    logger.info "vpc_id: #{vpc_id}"
+    logger.info "subnet_id: #{subnet_id}"
+
     create_spot_instance ||= cloud_env.spot_instance
 
     if create_spot_instance
@@ -307,24 +330,12 @@ namespace :rubber do
 
     if !create_spot_instance || (create_spot_instance && max_wait_time < 0)
       logger.info "Creating instance #{ami}/#{ami_type}/#{security_groups.join(',') rescue 'Default'}/#{availability_zone || 'Default'}"
-      vpc_id = env.vpc.id
-      subnet_id = nil
-      first_role = nil
-      role_names.each do |role|
-        if env.vpc.roles["#{role}"]
-          raise "Two subnets defined for the same server with role: [#{first_role}: #{subnet_id}, #{role}: #{env.vpc.roles["#{role}"].subnet_id}]" if subnet_id
-          first_role = role
-          subnet_id = env.vpc.roles["#{role}"].subnet_id
-        end
-      end
-      logger.info "vpc_id: #{vpc_id}"
-      logger.info "subnet_id: #{subnet_id}"
-      instance_id = cloud.create_instance(:ami => ami, :ami_type => ami_type, :security_groups => security_groups, :availability_zone => availability_zone, :vpc_id => vpc_id, :subnet_id => subnet_id)
+      instance_id = cloud.create_instance(:ami => ami, :ami_type => ami_type, :security_groups => security_groups, :availability_zone => availability_zone, :vpc_id => vpc_id, :subnet_id => subnet_id, :tenancy => tenancy)
     end
 
     logger.info "Instance #{instance_alias} created: #{instance_id}"
 
-    instance_item = Rubber::Configuration::InstanceItem.new(instance_alias, env.domain, instance_roles, instance_id, ami_type, ami, security_groups)
+    instance_item = Rubber::Configuration::InstanceItem.new(instance_alias, env.domain, instance_roles, instance_id, ami_type, ami, security_groups, vpc_id, subnet_id, tenancy)
     instance_item.spot_instance_request_id = request_id if create_spot_instance
     rubber_instances.add(instance_item)
     rubber_instances.save()
