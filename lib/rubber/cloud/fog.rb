@@ -3,9 +3,9 @@ require 'rubber/cloud/fog_storage'
 
 module Rubber
   module Cloud
-  
+
     class Fog < Base
-      
+
       attr_reader :compute_provider, :storage_provider
 
       def initialize(env, capistrano)
@@ -14,7 +14,7 @@ module Rubber
         @compute_provider = ::Fog::Compute.new(credentials)
         @storage_provider = ::Fog::Storage.new(credentials)
       end
-      
+
       def storage(bucket)
         return Rubber::Cloud::FogStorage.new(@storage_provider, bucket)
       end
@@ -23,12 +23,14 @@ module Rubber
         raise NotImplementedError, "No table store available for generic fog adapter"
       end
 
-      def create_instance(ami, ami_type, security_groups, availability_zone)
-        response = @compute_provider.servers.create(:image_id => ami,
-                                                    :flavor_id => ami_type,
-                                                    :groups => security_groups,
-                                                    :availability_zone => availability_zone,
-                                                    :key_name => env.key_name)
+      def create_instance(options={})
+        response = @compute_provider.servers.create(:image_id => options[:ami],
+                                                    :flavor_id => options[:ami_type],
+                                                    :groups => options[:security_groups],
+                                                    :availability_zone => options[:availability_zone],
+                                                    :key_name => env.key_name,
+                                                    :vpc_id => options[:vpc_id],
+                                                    :subnet_id => options[:subnet_id])
         instance_id = response.id
         return instance_id
       end
@@ -95,7 +97,7 @@ module Rubber
       def destroy_spot_instance_request(request_id)
         @compute_provider.spot_requests.get(request_id).destroy
       end
-  
+
       def reboot_instance(instance_id)
         response = @compute_provider.servers.get(instance_id).reboot()
       end
@@ -112,7 +114,7 @@ module Rubber
       def describe_availability_zones
         zones = []
         response = @compute_provider.describe_availability_zones()
-        items = response.body["availabilityZoneInfo"] 
+        items = response.body["availabilityZoneInfo"]
         items.each do |item|
           zone = {}
           zone[:name] = item["zoneName"]
@@ -163,7 +165,7 @@ module Rubber
           end
 
           groups << group
-          
+
         end
 
         return groups
@@ -172,26 +174,26 @@ module Rubber
       def add_security_group_rule(group_name, protocol, from_port, to_port, source)
         group = @compute_provider.security_groups.get(group_name)
         opts = {:ip_protocol => protocol || 'tcp'}
-        
+
         if source.instance_of? Hash
           opts[:group] = {source[:account] => source[:name]}
         else
           opts[:cidr_ip] = source
         end
-        
+
         group.authorize_port_range(from_port.to_i..to_port.to_i, opts)
       end
 
       def remove_security_group_rule(group_name, protocol, from_port, to_port, source)
         group = @compute_provider.security_groups.get(group_name)
         opts = {:ip_protocol => protocol || 'tcp'}
-        
+
         if source.instance_of? Hash
           opts[:group] = {source[:account] => source[:name]}
         else
           opts[:cidr_ip] = source
         end
-        
+
         group.revoke_port_range(from_port.to_i..to_port.to_i, opts)
       end
 
@@ -311,7 +313,7 @@ module Rubber
                                         :key => k.to_s, :value => v.to_s)
         end
       end
-      
+
     end
 
   end
