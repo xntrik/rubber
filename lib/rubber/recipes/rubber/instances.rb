@@ -257,15 +257,57 @@ namespace :rubber do
 
   set :mutex, Mutex.new
 
+  def get_vpc_id(env, role_names)
+    env.vpc.id
+  end
+
+    def get_subnet_id(env, role_names)
+      subnet_id = nil
+      first_subnet_role = nil
+
+      role_names.each do |role|
+        if env.vpc.roles["#{role}"]
+          if env.vpc.roles["#{role}"].subnet_id
+            raise "Two subnets defined for the same server with role: [#{first_subnet_role}: #{subnet_id}, #{role}: #{env.vpc.roles["#{role}"].subnet_id}]" if first_subnet_role
+            first_subnet_role = role
+            subnet_id = env.vpc.roles["#{role}"].subnet_id
+          end
+        end
+      end
+
+      subnet_id
+    end
+
+    def get_tenancy(env, role_names)
+      tenancy = 'default'
+      first_tenancy_role = nil
+
+      role_names.each do |role|
+        if env.vpc.roles["#{role}"]
+          if env.vpc.roles["#{role}"].tenancy
+            raise "Tenancy set in two different roles: [#{first_tenancy_role}, #{role}]" if first_tenancy_role
+            first_tenancy_role = role
+            tenancy = env.vpc.roles["#{role}"].tenancy
+          end
+        end
+      end
+
+      tenancy
+    end
+
   # Creates a new ec2 instance with the given alias and roles
   # Configures aliases (/etc/hosts) on local and remote machines
   def create_instance(instance_alias, instance_roles, create_spot_instance)
     role_names = instance_roles.collect{|x| x.name}
     env = rubber_cfg.environment.bind(role_names, instance_alias)
 
+    vpc_id = get_vpc_id(env, role_names)
+    subnet_id = get_subnet_id(env, role_names)
+    tenancy = get_tenancy(env, role_names)
+
     # We need to use security_groups during create, so create them up front
     mutex.synchronize do
-      setup_security_groups(instance_alias, role_names)
+      setup_security_groups(instance_alias, role_names, vpc_id)
     end
     security_groups = get_assigned_security_groups(instance_alias, role_names)
 
@@ -274,26 +316,6 @@ namespace :rubber do
     ami_type = cloud_env.image_type
     availability_zone = env.availability_zone
 
-    vpc_id = env.vpc.id
-    subnet_id = nil
-    tenancy = 'default'
-    first_subnet_role = nil
-    first_tenancy_role = nil
-    role_names.each do |role|
-      if env.vpc.roles["#{role}"]
-        if env.vpc.roles["#{role}"].subnet_id
-          raise "Two subnets defined for the same server with role: [#{first_subnet_role}: #{subnet_id}, #{role}: #{env.vpc.roles["#{role}"].subnet_id}]" if subnet_id
-          first_subnet_role = role
-          subnet_id = env.vpc.roles["#{role}"].subnet_id
-        end
-
-        if env.vpc.roles["#{role}"].tenancy
-          raise "Tenancy set in two different roles: [#{first_tenancy_role}, #{role}]" if first_tenancy_role
-          first_tenancy_role = role
-          tenancy = env.vpc.roles["#{role}"].tenancy
-        end
-      end
-    end
     logger.info "vpc_id: #{vpc_id}"
     logger.info "subnet_id: #{subnet_id}"
 
@@ -306,7 +328,7 @@ namespace :rubber do
       request_id = cloud.create_spot_instance_request(spot_price, ami, ami_type, security_groups, availability_zone)
 
       print "Waiting for spot instance request to be fulfilled"
-      max_wait_time = cloud_env.spot_instance_request_timeout || (1.0 / 0) # Use the specified timeout value or default to infinite.
+      max_wait_time =  cloud_env.spot_instance_request_timeout || (1.0 / 0) # Use the specified timeout value or default to infinite.
       instance_id = nil
       while instance_id.nil? do
         print "."

@@ -41,16 +41,16 @@ namespace :rubber do
     return security_groups
   end
 
-  def setup_security_groups(host=nil, roles=[])
+  def setup_security_groups(host=nil, roles=[], vpc_id=nil)
     env = rubber_cfg.environment.bind(roles, host)
     security_group_defns = Hash[env.security_groups.to_a]
     if env.auto_security_groups
       sghosts = (rubber_instances.collect{|ic| ic.name } + [host]).uniq.compact
       sgroles = (rubber_instances.all_roles + roles).uniq.compact
       security_group_defns = inject_auto_security_groups(security_group_defns, sghosts, sgroles)
-      sync_security_groups(security_group_defns)
+      sync_security_groups(security_group_defns, vpc_id)
     else
-      sync_security_groups(security_group_defns)
+      sync_security_groups(security_group_defns, vpc_id)
     end
   end
 
@@ -87,7 +87,7 @@ namespace :rubber do
         old_ref_name = rule['source_group_name']
         if old_ref_name
           # don't mangle names if the user specifies this is an external group they are giving access to.
-          # remove the external_group key to allow this to match with groups retrieved from cloud 
+          # remove the external_group key to allow this to match with groups retrieved from cloud
           is_external = rule.delete('external_group')
           if ! is_external && old_ref_name !~ /^#{isolate_prefix}/
             rule['source_group_name'] = isolate_group_name(old_ref_name)
@@ -99,13 +99,13 @@ namespace :rubber do
     return renamed
   end
 
-  def sync_security_groups(groups)
+  def sync_security_groups(groups, vpc_id=nil)
     return unless groups
 
     groups = Rubber::Util::stringify(groups)
     groups = isolate_groups(groups)
     group_keys = groups.keys.clone()
-    
+
     # For each group that does already exist in cloud
     cloud_groups = cloud.describe_security_groups()
     cloud_groups.each do |cloud_group|
@@ -116,9 +116,9 @@ namespace :rubber do
 
       if group_keys.delete(group_name)
         # sync rules
-        logger.debug "Security Group already in cloud, syncing rules: #{group_name}"
+        logger.debug "Security Group already in cloud, syncing rules: #{group_name} #{'(vpc: ' + vpc_id + ')' if vpc_id}"
         group = groups[group_name]
-        
+
         # convert the special case default rule into what it actually looks like when
         # we query ec2 so that we can match things up when syncing
         rules = group['rules'].clone
@@ -130,7 +130,7 @@ namespace :rubber do
             rules.delete(rule)
           end
         end
-        
+
         rule_maps = []
 
         # first collect the rule maps from the request (group/user pairs are duplicated for tcp/udp/icmp,
@@ -207,9 +207,9 @@ namespace :rubber do
     # For each group that didnt already exist in cloud
     group_keys.each do |group_name|
       group = groups[group_name]
-      logger.debug "Creating new security group: #{group_name}"
+      logger.debug "Creating new security group: #{group_name} #{'(vpc: ' + vpc_id + ')' if vpc_id}"
       # create each group
-      cloud.create_security_group(group_name, group['description'])
+      cloud.create_security_group(group_name, group['description'], vpc_id)
       # create rules for group
       group['rules'].each do |rule_map|
         logger.debug "Creating new rule: #{rule_map.inspect}"

@@ -23,16 +23,30 @@ module Rubber
         raise NotImplementedError, "No table store available for generic fog adapter"
       end
 
+
+      # convert the security group names to IDs
+      def convert_security_groups_to_ids(security_groups)
+          security_group_ids = security_groups.map do |group_name|
+             group = @compute_provider.security_groups.get(group_name)
+             group.group_id if group
+          end
+          puts "\tConvert security group names #{security_groups} to ids #{security_group_ids.compact!}"
+          security_group_ids.compact!
+      end
+
       def create_instance(options={})
+          puts "\t\toptions: #{options}"
         response = @compute_provider.servers.create(:image_id => options[:ami],
                                                     :flavor_id => options[:ami_type],
-                                                    :groups => options[:security_groups],
+                                                    :security_group_ids => convert_security_groups_to_ids(options[:security_groups]),
                                                     :availability_zone => options[:availability_zone],
                                                     :key_name => env.key_name,
                                                     :vpc_id => options[:vpc_id],
                                                     :subnet_id => options[:subnet_id],
                                                     :tenancy => options[:tenancy])
         instance_id = response.id
+          puts "\t\tresponse: #{response.to_s}"
+          raise "fail fast"
         return instance_id
       end
 
@@ -125,8 +139,8 @@ module Rubber
         return zones
       end
 
-      def create_security_group(group_name, group_description)
-        @compute_provider.security_groups.create(:name => group_name, :description => group_description)
+      def create_security_group(group_name, group_description, vpc_id=nil)
+        @compute_provider.security_groups.create(:name => group_name, :description => group_description, :vpc_id => vpc_id)
       end
 
       def describe_security_groups(group_name=nil)
