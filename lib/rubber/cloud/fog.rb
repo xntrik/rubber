@@ -26,27 +26,27 @@ module Rubber
 
       # convert the security group names to IDs
       def convert_security_groups_to_ids(security_groups)
-          security_group_ids = security_groups.map do |group_name|
-             group = @compute_provider.security_groups.get(group_name)
-             group.group_id if group
-          end
-          puts "\tConvert security group names #{security_groups} to ids #{security_group_ids.compact!}"
-          security_group_ids.compact!
+        security_group_ids = security_groups.map do |group_name|
+          group = @compute_provider.security_groups.get(group_name)
+          group.group_id if group
+        end
+        security_group_ids.compact!
       end
 
       def create_instance(options={})
-          puts "\t\toptions: #{options}"
+        puts "\t\toptions: #{options}"
+        sg_ids = convert_security_groups_to_ids(options[:security_groups])
+        puts "\tConvert security group names #{options[:security_groups]} to ids #{sg_ids}"
         response = @compute_provider.servers.create(:image_id => options[:ami],
                                                     :flavor_id => options[:ami_type],
-                                                    :security_group_ids => convert_security_groups_to_ids(options[:security_groups]),
+                                                    :security_group_ids => sg_ids,
                                                     :availability_zone => options[:availability_zone],
                                                     :key_name => env.key_name,
                                                     :vpc_id => options[:vpc_id],
                                                     :subnet_id => options[:subnet_id],
                                                     :tenancy => options[:tenancy])
         instance_id = response.id
-          puts "\t\tresponse: #{response.to_s}"
-          raise "fail fast"
+        puts "\t\tresponse: #{response.to_s}"
         return instance_id
       end
 
@@ -188,15 +188,19 @@ module Rubber
 
       def add_security_group_rule(group_name, protocol, from_port, to_port, source)
         group = @compute_provider.security_groups.get(group_name)
-        opts = {:ip_protocol => protocol || 'tcp'}
+        if group
+          opts = {:ip_protocol => protocol || 'tcp'}
 
-        if source.instance_of? Hash
-          opts[:group] = {source[:account] => source[:name]}
+          if source.instance_of? Hash
+            opts[:group] = {source[:account] => source[:name]}
+          else
+            opts[:cidr_ip] = source
+          end
+
+          group.authorize_port_range(from_port.to_i..to_port.to_i, opts)
         else
-          opts[:cidr_ip] = source
+          puts "!! Did not add port range (from: #{from_port}, to: #{to_port}) for group named (#{group_name})"
         end
-
-        group.authorize_port_range(from_port.to_i..to_port.to_i, opts)
       end
 
       def remove_security_group_rule(group_name, protocol, from_port, to_port, source)
