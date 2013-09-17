@@ -5,7 +5,11 @@ module Rubber
       instance_item = Rubber.instances[instance_alias]
       raise "Instance does not exist: #{instance_alias}" if ! instance_item
 
-      Rubber.cloud.create_tags(instance_item.instance_id, :Name => instance_alias, :Environment => Rubber.env)
+      opts = {}
+      opts["Name"] = instance_alias
+      opts["Environment"] = Rubber.env
+      opts.merge!(Rubber.config.tags.reduce) if Rubber.config.tags
+      Rubber.cloud.create_tags(instance_item.instance_id, opts)
     end
   end
 end
