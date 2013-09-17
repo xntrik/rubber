@@ -220,8 +220,10 @@ module Rubber
         @compute_provider.security_groups.get(group_name).destroy
       end
 
-      def create_static_ip
-        address = @compute_provider.addresses.create()
+      def create_static_ip(within_vpc)
+        opts = {}
+        opts[:domain] = 'vpc' if within_vpc
+        address = @compute_provider.addresses.create(opts)
         return address.public_ip
       end
 
