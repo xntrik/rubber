@@ -30,7 +30,7 @@ module Rubber
           group = @compute_provider.security_groups.get(group_name)
           group.group_id if group
         end
-        security_group_ids.compact!
+        security_group_ids.compact
       end
 
       def create_instance(options={})
@@ -255,6 +255,7 @@ module Rubber
       end
 
       def destroy_static_ip(ip)
+        detach_static_ip(ip)
         address = @compute_provider.addresses.get(ip)
         return address.destroy
       end
