@@ -28,6 +28,26 @@ namespace :rubber do
     end
   end
 
+  desc <<-DESC
+    Destroy the network security groups
+  DESC
+  required_task :destroy_security_groups do
+    cloud_groups = cloud.describe_security_groups()
+
+    cloud_groups.each do |cloud_group|
+      group_name = cloud_group[:name]
+
+      next if group_name !~ /^#{isolate_prefix}/
+
+      begin
+        logger.debug "Destroying security group: #{group_name}..."
+        cloud.destroy_security_group(group_name)
+        logger.debug "Destroyed security group: #{group_name}"
+      rescue
+        logger.debug "Could not security group: #{group_name}"
+      end
+    end
+  end
 
   def get_assigned_security_groups(host=nil, roles=[])
     env = rubber_cfg.environment.bind(roles, host)
@@ -41,16 +61,20 @@ namespace :rubber do
     return security_groups
   end
 
-  def setup_security_groups(host=nil, roles=[], vpc_id=nil)
+  def get_related_security_groups(host=nil, roles=[])
     env = rubber_cfg.environment.bind(roles, host)
     security_group_defns = Hash[env.security_groups.to_a]
-    if env.auto_security_groups
-      sghosts = (rubber_instances.collect{|ic| ic.name } + [host]).uniq.compact
-      sgroles = (rubber_instances.all_roles + roles).uniq.compact
-      security_group_defns = inject_auto_security_groups(security_group_defns, sghosts, sgroles)
-      sync_security_groups(security_group_defns, vpc_id)
+    sghosts = (rubber_instances.collect{|ic| ic.name } + [host]).uniq.compact
+    sgroles = (rubber_instances.all_roles + roles).uniq.compact
+    inject_auto_security_groups(security_group_defns, sghosts, sgroles)
+  end
+
+  def setup_security_groups(host=nil, roles=[], vpc_id=nil)
+    if rubber_cfg.environment.bind(roles, host).auto_security_groups
+      security_group_defns = get_related_security_groups(host, roles)
+      sync_security_groups(security_group_defns, vpc_id, host)
     else
-      sync_security_groups(security_group_defns, vpc_id)
+      sync_security_groups(security_group_defns, vpc_id, host)
     end
   end
 
@@ -99,7 +123,7 @@ namespace :rubber do
     return renamed
   end
 
-  def sync_security_groups(groups, vpc_id=nil)
+  def sync_security_groups(groups, vpc_id=nil, host)
     return unless groups
 
     groups = Rubber::Util::stringify(groups)

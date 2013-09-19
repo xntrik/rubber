@@ -14,7 +14,7 @@ namespace :rubber do
         # first allocate the static ip if we don't have a global record (artifacts) for it
         if ! ip
           logger.info "Allocating static IP for #{ic.full_name}"
-          ip = allocate_static_ip(!ic.vpc_id.empty?)
+          ip = allocate_static_ip(ic.vpc_id == nil)
           artifacts['static_ips'][ic.name] = ip
           rubber_instances.save
         end

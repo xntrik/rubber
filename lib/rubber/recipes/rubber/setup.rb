@@ -89,7 +89,7 @@ namespace :rubber do
         end
       end
 
-      local_hosts << ic.internal_ip << ' ' << hosts_data.join(' ') << "\n"
+      local_hosts << ic.connection_ip << ' ' << hosts_data.join(' ') << "\n"
     end
     local_hosts << delim << "\n"
 
@@ -115,7 +115,7 @@ namespace :rubber do
     remote_hosts = []
 
     rubber_instances.each do |ic|
-      hosts_data = [ic.internal_ip, ic.full_name, ic.name, ic.external_host, ic.internal_host]
+      hosts_data = [ic.connection_ip, ic.full_name, ic.name, ic.external_host, ic.internal_host]
 
       # add the ip aliases for web tools hosts so we can map internal tools
       # to their own vhost to make proxying easier (rewriting url paths for
@@ -135,9 +135,9 @@ namespace :rubber do
       replace="#{delim}\\n#{remote_hosts.join("\\n")}\\n#{delim}"
 
       rubber.sudo_script 'setup_remote_aliases', <<-ENDSCRIPT
-        sed -i.bak '/#{delim}/,/#{delim}/c #{replace}' /etc/hosts
-        if ! grep -q "#{delim}" /etc/hosts; then
-          echo -e "#{replace}" >> /etc/hosts
+        sed -i.bak '/#{delim}/,/#{delim}/c #{replace}' #{hosts_file}
+        if ! grep -q "#{delim}" #{hosts_file}; then
+          echo -e "#{replace}" >> #{hosts_file}
         fi
       ENDSCRIPT
 

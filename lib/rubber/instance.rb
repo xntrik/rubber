@@ -216,6 +216,14 @@ module Rubber
         @tenancy = tenancy
       end
 
+      def connection_ip
+          if vpc_id
+              self.internal_ip
+          else
+              self.external_ip
+          end
+      end
+
       def self.from_hash(hash)
         item = allocate
         hash.each do |k, v|

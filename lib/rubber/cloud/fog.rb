@@ -34,7 +34,6 @@ module Rubber
       end
 
       def create_instance(options={})
-        puts "\t\toptions: #{options}"
         sg_ids = convert_security_groups_to_ids(options[:security_groups])
         puts "\tConvert security group names #{options[:security_groups]} to ids #{sg_ids}"
         response = @compute_provider.servers.create(:image_id => options[:ami],
@@ -46,7 +45,6 @@ module Rubber
                                                     :subnet_id => options[:subnet_id],
                                                     :tenancy => options[:tenancy])
         instance_id = response.id
-        puts "\t\tresponse: #{response.to_s}"
         return instance_id
       end
 

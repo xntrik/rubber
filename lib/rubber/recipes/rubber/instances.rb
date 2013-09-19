@@ -258,7 +258,11 @@ namespace :rubber do
   set :mutex, Mutex.new
 
   def get_vpc_id(env, role_names)
-    env.vpc.id
+    if env.vpc
+      env.vpc.id
+    else
+      nil
+    end
   end
 
     def get_subnet_id(env, role_names)
@@ -266,14 +270,14 @@ namespace :rubber do
       first_subnet_role = nil
 
       role_names.each do |role|
-        if env.vpc.roles["#{role}"]
+        if env.vpc and env.vpc.roles["#{role}"]
           if env.vpc.roles["#{role}"].subnet_id
             raise "Two subnets defined for the same server with role: [#{first_subnet_role}: #{subnet_id}, #{role}: #{env.vpc.roles["#{role}"].subnet_id}]" if first_subnet_role
             first_subnet_role = role
             subnet_id = env.vpc.roles["#{role}"].subnet_id
           end
         end
-      end
+      end if env.vpc
 
       subnet_id
     end
@@ -290,7 +294,7 @@ namespace :rubber do
             tenancy = env.vpc.roles["#{role}"].tenancy
           end
         end
-      end
+      end if env.vpc
 
       tenancy
     end
@@ -413,9 +417,9 @@ namespace :rubber do
         begin
           Timeout::timeout(30) do
             # turn back on root ssh access if we are using root as the capistrano user for connecting
-            enable_root_ssh(instance_item.internal_ip, fetch(:initial_ssh_user, 'ubuntu')) if user == 'root'
+            enable_root_ssh(instance_item.connection_ip, fetch(:initial_ssh_user, 'ubuntu')) if user == 'root'
             # force a connection so if above isn't enabled we still timeout if initial connection hangs
-            direct_connection(instance_item.internal_ip) do
+            direct_connection(instance_item.connection_ip) do
               run "echo"
             end
           end
