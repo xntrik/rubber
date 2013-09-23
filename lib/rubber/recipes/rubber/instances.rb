@@ -320,15 +320,19 @@ namespace :rubber do
     ami_type = cloud_env.image_type
     availability_zone = env.availability_zone
 
-    logger.info "vpc_id: #{vpc_id}"
-    logger.info "subnet_id: #{subnet_id}"
-
     create_spot_instance ||= cloud_env.spot_instance
+
+    logger.info "Creating spot instance request for instance #{ami}"
+    logger.debug "##### type: #{ami_type}"
+    logger.debug "##### security_groups: #{security_groups.join(',') rescue 'Default'}"
+    logger.debug "##### availability zone: #{availability_zone || 'Default'}"
+    logger.debug "##### vpc: #{vpc_id}" if vpc_id
+    logger.debug "##### subnet: #{subnet_id}" if subnet_id
+    logger.debug "##### tenancy: #{tenancy}" if tenancy
 
     if create_spot_instance
       spot_price = cloud_env.spot_price.to_s
 
-      logger.info "Creating spot instance request for instance #{ami}/#{ami_type}/#{security_groups.join(',') rescue 'Default'}/#{availability_zone || 'Default'}"
       request_id = cloud.create_spot_instance_request(spot_price, ami, ami_type, security_groups, availability_zone)
 
       print "Waiting for spot instance request to be fulfilled"
@@ -355,7 +359,6 @@ namespace :rubber do
     end
 
     if !create_spot_instance || (create_spot_instance && max_wait_time < 0)
-      logger.info "Creating instance #{ami}/#{ami_type}/#{security_groups.join(',') rescue 'Default'}/#{availability_zone || 'Default'}"
       instance_id = cloud.create_instance(:ami => ami, :ami_type => ami_type, :security_groups => security_groups, :availability_zone => availability_zone, :vpc_id => vpc_id, :subnet_id => subnet_id, :tenancy => tenancy)
     end
 

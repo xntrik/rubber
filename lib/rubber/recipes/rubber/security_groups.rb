@@ -52,12 +52,20 @@ namespace :rubber do
   def get_assigned_security_groups(host=nil, roles=[])
     env = rubber_cfg.environment.bind(roles, host)
     security_groups = env.assigned_security_groups
+
     if env.auto_security_groups
       security_groups << host
       security_groups += roles
     end
+
     security_groups = security_groups.uniq.compact.reject {|x| x.empty? }
     security_groups = security_groups.collect {|x| isolate_group_name(x) }
+
+    security_groups.each do |group|
+      cloud_group = cloud.describe_security_groups(group).first
+      security_groups.delete(group) unless cloud_group and cloud_group.has_key?(:permissions) and cloud_group[:permissions].any?
+    end if env.purge_empty_security_groups
+
     return security_groups
   end
 
@@ -74,6 +82,7 @@ namespace :rubber do
       security_group_defns = get_related_security_groups(host, roles)
       sync_security_groups(security_group_defns, vpc_id, host)
     else
+      security_group_defns = Hash[rubber_cfg.environment.bind(roles, host).security_groups.to_a]
       sync_security_groups(security_group_defns, vpc_id, host)
     end
   end
@@ -158,7 +167,7 @@ namespace :rubber do
         rule_maps = []
 
         # first collect the rule maps from the request (group/user pairs are duplicated for tcp/udp/icmp,
-        # so we need to do this up frnot and remove duplicates before checking against the local rubber rules)
+        # so we need to do this up front and remove duplicates before checking against the local rubber rules)
         cloud_group[:permissions].each do |rule|
           source_groups = rule.delete(:source_groups)
           if source_groups
