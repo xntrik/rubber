@@ -14,7 +14,7 @@ namespace :rubber do
         # first allocate the static ip if we don't have a global record (artifacts) for it
         if ! ip
           logger.info "Allocating static IP for #{ic.full_name}"
-          ip = allocate_static_ip(ic.vpc_id == nil)
+          ip = allocate_static_ip(! ic.vpc_id.empty?)
           artifacts['static_ips'][ic.name] = ip
           rubber_instances.save
         end
@@ -32,20 +32,20 @@ namespace :rubber do
           ic.static_ip = ip
           rubber_instances.save()
 
-          logger.info "Waiting for static ip to associate"
-          while true do
-            task :_wait_for_static_ip, :hosts => ip do
-              run "echo"
-            end
-            begin
-              _wait_for_static_ip
-            rescue ConnectionError
-              sleep 2
-              logger.info "Failed to connect to static ip #{ip}, retrying"
-              retry
-            end
-            break
-          end
+          #logger.info "Waiting for static ip to associate"
+          #while true do
+          #  task :_wait_for_static_ip, :hosts => ip do
+          #    run "echo"
+          #  end
+          #  begin
+          #    _wait_for_static_ip
+          #  rescue ConnectionError
+          #    sleep 2
+          #    logger.info "Failed to connect to static ip #{ip}, retrying"
+          #    retry
+          #  end
+          #  break
+          #end
         end
 
       end

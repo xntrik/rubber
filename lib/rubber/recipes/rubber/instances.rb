@@ -322,7 +322,7 @@ namespace :rubber do
 
     create_spot_instance ||= cloud_env.spot_instance
 
-    logger.info "Creating spot instance request for instance #{ami}"
+    logger.info "Creating instance request for instance #{ami}"
     logger.debug "##### type: #{ami_type}"
     logger.debug "##### security_groups: #{security_groups.join(',') rescue 'Default'}"
     logger.debug "##### availability zone: #{availability_zone || 'Default'}"
