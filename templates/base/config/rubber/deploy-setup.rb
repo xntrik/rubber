@@ -48,7 +48,7 @@ namespace :rubber do
           echo -n .
           sleep 5
         done
-        
+
         # this returns exit code even if pid has already died, and thus triggers fail fast shell error
         wait $bg_pid
 
@@ -57,7 +57,7 @@ namespace :rubber do
       fi
       ENDSCRIPT
     end
-    
+
     # ensure that the profile script gets sourced by reconnecting
     after "rubber:base:install_ruby" do
       teardown_connections_to(sessions.keys)
@@ -80,8 +80,8 @@ namespace :rubber do
       rubber.sudo_script 'custom_install', <<-ENDSCRIPT
         # add the user for running app server with
         if ! id #{rubber_env.app_user} &> /dev/null; then adduser --system --group #{rubber_env.app_user}; fi
-          
-        # add ssh keys for root 
+
+        # add ssh keys for root
         if [[ ! -f /root/.ssh/id_dsa ]]; then ssh-keygen -q -t dsa -N '' -f /root/.ssh/id_dsa; fi
       ENDSCRIPT
     end
@@ -98,9 +98,10 @@ namespace :rubber do
       ENDSCRIPT
     end
 
-    after "rubber:bootstrap", "rubber:base:reinstall_virtualbox_additions"
-    task :reinstall_virtualbox_additions, :only => { :provider => 'vagrant' } do
-      rsudo "service vboxadd setup"
-    end
+    #TODO
+    #after "rubber:bootstrap", "rubber:base:reinstall_virtualbox_additions"
+    #task :reinstall_virtualbox_additions, :only => { :provider => 'vagrant' } do
+    #  rsudo "service vboxadd setup"
+    #end
   end
 end
