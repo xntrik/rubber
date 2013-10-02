@@ -10,9 +10,12 @@ module Rubber
 
       def initialize(env, capistrano)
         super(env, capistrano)
-        credentials = Rubber::Util.symbolize_keys(env.credentials)
-        @compute_provider = ::Fog::Compute.new(credentials)
-        @storage_provider = ::Fog::Storage.new(credentials)
+
+        compute_credentials = Rubber::Util.symbolize_keys(env.compute_credentials) if env.compute_credentials
+        storage_credentials = Rubber::Util.symbolize_keys(env.storage_credentials) if env.storage_credentials
+
+        @compute_provider = compute_credentials ? ::Fog::Compute.new(compute_credentials) : nil
+        @storage_provider = storage_credentials ? ::Fog::Storage.new(storage_credentials) : nil
       end
 
       def storage(bucket)
@@ -22,7 +25,6 @@ module Rubber
       def table_store(table_key)
         raise NotImplementedError, "No table store available for generic fog adapter"
       end
-
 
       # convert the security group names to IDs
       def convert_security_groups_to_ids(security_groups)
@@ -48,61 +50,6 @@ module Rubber
         return instance_id
       end
 
-      def create_spot_instance_request(spot_price, ami, ami_type, security_groups, availability_zone)
-        response = @compute_provider.spot_requests.create(:price => spot_price,
-                                                          :image_id => ami,
-                                                          :flavor_id => ami_type,
-                                                          :groups => security_groups,
-                                                          :availability_zone => availability_zone,
-                                                          :key_name => env.key_name)
-        request_id = response.id
-        return request_id
-      end
-
-      def describe_instances(instance_id=nil)
-        instances = []
-        opts = {}
-        opts["instance-id"] = instance_id if instance_id
-
-        response = @compute_provider.servers.all(opts)
-        response.each do |item|
-          instance = {}
-          instance[:id] = item.id
-          instance[:type] = item.flavor_id
-          instance[:external_host] = item.dns_name
-          instance[:external_ip] = item.public_ip_address
-          instance[:internal_host] = item.private_dns_name
-          instance[:internal_ip] = item.private_ip_address
-          instance[:state] = item.state
-          instance[:zone] = item.availability_zone
-          instance[:platform] = item.platform || 'linux'
-          instance[:root_device_type] = item.root_device_type
-          instances << instance
-        end
-
-        return instances
-      end
-
-      def describe_spot_instance_requests(request_id=nil)
-        requests = []
-        opts = {}
-        opts["spot-instance-request-id"] = request_id if request_id
-        response = @compute_provider.spot_requests.all(opts)
-        response.each do |item|
-          request = {}
-          request[:id] = item.id
-          request[:spot_price] = item.price
-          request[:state] = item.state
-          request[:created_at] = item.created_at
-          request[:type] = item.flavor_id
-          request[:image_id] = item.image_id
-          request[:instance_id] = item.instance_id
-          requests << request
-        end
-        return requests
-      end
-
-
       def destroy_instance(instance_id)
         response = @compute_provider.servers.get(instance_id).destroy()
       end
@@ -115,107 +62,13 @@ module Rubber
         response = @compute_provider.servers.get(instance_id).reboot()
       end
 
-      def stop_instance(instance_id, force=false)
+      def stop_instance(instance, force=false)
         # Don't force the stop process. I.e., allow the instance to flush its file system operations.
-        response = @compute_provider.servers.get(instance_id).stop(force)
+        response = @compute_provider.servers.get(instance.instance_id).stop(force)
       end
 
-      def start_instance(instance_id)
-        response = @compute_provider.servers.get(instance_id).start()
-      end
-
-      def describe_availability_zones
-        zones = []
-        response = @compute_provider.describe_availability_zones()
-        items = response.body["availabilityZoneInfo"]
-        items.each do |item|
-          zone = {}
-          zone[:name] = item["zoneName"]
-          zone[:state] =item["zoneState"]
-          zones << zone
-        end
-        return zones
-      end
-
-      def create_security_group(group_name, group_description, vpc_id=nil)
-        @compute_provider.security_groups.create(:name => group_name, :description => group_description, :vpc_id => vpc_id)
-      end
-
-      def describe_security_groups(group_name=nil)
-        groups = []
-
-        opts = {}
-        opts["group-name"] = group_name if group_name
-        response = @compute_provider.security_groups.all(opts)
-
-        response.each do |item|
-          group = {}
-          group[:name] = item.name
-          group[:description] = item.description
-
-          item.ip_permissions.each do |ip_item|
-            group[:permissions] ||= []
-            rule = {}
-
-            rule[:protocol] = ip_item["ipProtocol"]
-            rule[:from_port] = ip_item["fromPort"]
-            rule[:to_port] = ip_item["toPort"]
-
-            ip_item["groups"].each do |rule_group|
-              rule[:source_groups] ||= []
-              source_group = {}
-              source_group[:account] = rule_group["userId"]
-              source_group[:name] = rule_group["groupName"]
-              rule[:source_groups] << source_group
-            end if ip_item["groups"]
-
-            ip_item["ipRanges"].each do |ip_range|
-              rule[:source_ips] ||= []
-              rule[:source_ips] << ip_range["cidrIp"]
-            end if ip_item["ipRanges"]
-
-            group[:permissions] << rule
-          end
-
-          groups << group
-
-        end
-
-        return groups
-      end
-
-      def add_security_group_rule(group_name, protocol, from_port, to_port, source)
-        group = @compute_provider.security_groups.get(group_name)
-        if group
-          opts = {:ip_protocol => protocol || 'tcp'}
-
-          if source.instance_of? Hash
-            opts[:group] = {source[:account] => source[:name]}
-          else
-            opts[:cidr_ip] = source
-          end
-
-          group.authorize_port_range(from_port.to_i..to_port.to_i, opts)
-        else
-          puts "!! Did not add port range (from: #{from_port}, to: #{to_port}) for group named (#{group_name})"
-        end
-      end
-
-      def remove_security_group_rule(group_name, protocol, from_port, to_port, source)
-        group = @compute_provider.security_groups.get(group_name)
-        opts = {:ip_protocol => protocol || 'tcp'}
-
-        if source.instance_of? Hash
-          opts[:group] = {source[:account] => source[:name]}
-        else
-          opts[:cidr_ip] = source
-        end
-
-        group.revoke_port_range(from_port.to_i..to_port.to_i, opts)
-      end
-
-      def destroy_security_group(group_name)
-        @compute_provider.security_groups.get(group_name).destroy
+      def start_instance(instance)
+        response = @compute_provider.servers.get(instance.instance_id).start()
       end
 
       def create_static_ip(within_vpc)
@@ -229,13 +82,13 @@ module Rubber
         address = @compute_provider.addresses.get(ip)
         server = @compute_provider.servers.get(instance_id)
         response = (address.server = server)
-        return ! response.nil?
+        return !response.nil?
       end
 
       def detach_static_ip(ip)
         address = @compute_provider.addresses.get(ip)
         response = (address.server = nil)
-        return ! response.nil?
+        return !response.nil?
       end
 
       def describe_static_ips(ip=nil)
@@ -253,48 +106,8 @@ module Rubber
       end
 
       def destroy_static_ip(ip)
-        detach_static_ip(ip)
         address = @compute_provider.addresses.get(ip)
         return address.destroy
-      end
-
-      def create_volume(size, zone)
-        volume = @compute_provider.volumes.create(:size => size.to_s, :availability_zone => zone)
-        return volume.id
-      end
-
-      def attach_volume(volume_id, instance_id, device)
-        volume = @compute_provider.volumes.get(volume_id)
-        server = @compute_provider.servers.get(instance_id)
-        volume.device = device
-        volume.server = server
-      end
-
-      def detach_volume(volume_id, force=true)
-        volume = @compute_provider.volumes.get(volume_id)
-        force ? volume.force_detach : (volume.server = nil)
-      end
-
-      def describe_volumes(volume_id=nil)
-        volumes = []
-        opts = {}
-        opts[:'volume-id'] = volume_id if volume_id
-        response = @compute_provider.volumes.all(opts)
-        response.each do |item|
-          volume = {}
-          volume[:id] = item.id
-          volume[:status] = item.state
-          if item.server_id
-            volume[:attachment_instance_id] = item.server_id
-            volume[:attachment_status] = item.attached_at ? "attached" : "waiting"
-          end
-          volumes << volume
-        end
-        return volumes
-      end
-
-      def destroy_volume(volume_id)
-        @compute_provider.volumes.get(volume_id).destroy
       end
 
       def create_image(image_name)
@@ -333,8 +146,6 @@ module Rubber
                                         :key => k.to_s, :value => v.to_s)
         end
       end
-
     end
-
   end
 end
