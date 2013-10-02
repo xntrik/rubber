@@ -13,7 +13,7 @@ namespace :rubber do
   # Disable connecting to any Windows instance.
   alias :original_task :task
   def task(name, options={}, &block)
-    original_task(name, options.merge(:except => { :platform => 'windows' }), &block)
+    original_task(name, options.merge(:only => { :platform => 'linux' }), &block)
   end
 
   # advise capistrano's task method so that tasks for non-existent roles don't
@@ -26,7 +26,7 @@ namespace :rubber do
       alias :required_task :task
       def task(name, options={}, &block)
         # Disable connecting to any Windows instance.
-        required_task(name, options.merge(:except => { :platform => 'windows' })) do
+        required_task(name, options.merge(:only => { :platform => 'linux' })) do
           # define empty roles for the case when a task has a role that we don't define anywhere
           unless options[:roles].respond_to?(:call)
             [*options[:roles]].each do |r|
@@ -55,9 +55,9 @@ namespace :rubber do
     # Disable connecting to any Windows instance.
     # pass -l to bash in :shell to that run also gets full env
     # use a pty so we don't get "stdin: is not a tty" error output
-    default_run_options[:pty] = true
-    default_run_options[:shell] = "/bin/bash -l"
-    default_run_options[:except] = { :platform => 'windows' }
+    default_run_options[:pty] = true if default_run_options[:pty].nil?
+    default_run_options[:shell] = "/bin/bash -l" if default_run_options[:shell].nil?
+    default_run_options[:only] ||= { :platform => 'linux' }
 
     set :cloud, Rubber.cloud(self)
 
@@ -65,7 +65,8 @@ namespace :rubber do
     # NOTE: for some reason Capistrano requires you to have both the public and
     # the private key in the same folder, the public key should have the
     # extension ".pub".
-    ssh_options[:keys] = [cloud.env.key_file].flatten
+
+    ssh_options[:keys] = [ENV['RUBBER_SSH_KEY'] || cloud.env.key_file].flatten.compact
     ssh_options[:timeout] = fetch(:ssh_timeout, 5)
   end
 
@@ -84,7 +85,7 @@ namespace :rubber do
     # define capistrano host => role mapping for all instances
     rubber_instances.filtered.each do |ic|
       ic.roles.each do |role|
-        opts = Rubber::Util::symbolize_keys(role.options).merge(:platform => ic.platform)
+        opts = Rubber::Util::symbolize_keys(role.options).merge(:platform => ic.platform, :provider => ic.provider)
         msg = "Auto role: #{role.name.to_sym} => #{ic.full_name}"
         msg << ", #{opts.inspect}" if opts.inspect.size > 0
         logger.info msg

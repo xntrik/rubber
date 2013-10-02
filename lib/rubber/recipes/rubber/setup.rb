@@ -9,6 +9,7 @@ namespace :rubber do
     link_bash
     set_timezone
     enable_multiverse
+    install_core_packages
     upgrade_packages
     install_packages
     setup_volumes
@@ -19,12 +20,38 @@ namespace :rubber do
 
   # Sets up instance to allow root access (e.g. recent canonical AMIs)
   def enable_root_ssh(ip, initial_ssh_user)
+    # Capistrano uses the :password variable for sudo commands.  Since this setting is generally used for the deploy user,
+    # but we need it this one time for the initial SSH user, we need to swap out and restore the password.
+    #
+    # We special-case the 'ubuntu' user since the Canonical AMIs on EC2 don't set the password for
+    # this account, making any password prompt potentially confusing.
+    orig_password = fetch(:password)
+    set(:password, initial_ssh_user == 'ubuntu' || ENV.has_key?('RUN_FROM_VAGRANT') ? nil : Capistrano::CLI.password_prompt("Password for #{initial_ssh_user} @ #{ip}: "))
+
+    task :_ensure_key_file_present, :hosts => "#{initial_ssh_user}@#{ip}" do
+      public_key_filename = "#{cloud.env.key_file}.pub"
+
+      if File.exists?(public_key_filename)
+        public_key = File.read(public_key_filename).chomp
+
+        rubber.sudo_script 'ensure_key_file_present', <<-ENDSCRIPT
+          mkdir -p ~/.ssh
+          touch ~/.ssh/authorized_keys
+          chmod 600 ~/.ssh/authorized_keys
+
+          if ! grep -q '#{public_key}' .ssh/authorized_keys; then
+            echo '#{public_key}' >> .ssh/authorized_keys
+          fi
+        ENDSCRIPT
+      end
+    end
 
     task :_allow_root_ssh, :hosts => "#{initial_ssh_user}@#{ip}" do
-      rsudo "cp /home/#{initial_ssh_user}/.ssh/authorized_keys /root/.ssh/"
+      rsudo "mkdir -p /root/.ssh && cp /home/#{initial_ssh_user}/.ssh/authorized_keys /root/.ssh/"
     end
 
     begin
+      _ensure_key_file_present
       _allow_root_ssh
     rescue ConnectionError => e
       if e.message =~ /Net::SSH::AuthenticationFailed/
@@ -35,6 +62,9 @@ namespace :rubber do
         retry
       end
     end
+
+    # Restore the original deploy password.
+    set(:password, orig_password)
   end
 
   # Forces a direct connection
@@ -89,16 +119,21 @@ namespace :rubber do
         end
       end
 
-      local_hosts << ic.connection_ip << ' ' << hosts_data.join(' ') << "\n"
+      local_hosts << ic.external_ip << ' ' << hosts_data.join(' ') << "\n"
     end
     local_hosts << delim << "\n"
 
     # Write out the hosts file for this machine, use sudo
-    filtered = File.read(hosts_file).gsub(/^#{delim}.*^#{delim}\n?/m, '')
-    logger.info "Writing out aliases into local machines #{hosts_file}, sudo access needed"
-    Rubber::Util::sudo_open(hosts_file, 'w') do |f|
-      f.write(filtered)
-      f.write(local_hosts)
+    existing = File.read(hosts_file)
+    filtered = existing.gsub(/^#{delim}.*^#{delim}\n?/m, '')
+
+    # only write out if it has changed
+    if existing != (filtered + local_hosts)
+      logger.info "Writing out aliases into local machines #{hosts_file}, sudo access needed"
+      Rubber::Util::sudo_open(hosts_file, 'w') do |f|
+        f.write(filtered)
+        f.write(local_hosts)
+      end
     end
   end
 
@@ -135,9 +170,9 @@ namespace :rubber do
       replace="#{delim}\\n#{remote_hosts.join("\\n")}\\n#{delim}"
 
       rubber.sudo_script 'setup_remote_aliases', <<-ENDSCRIPT
-        sed -i.bak '/#{delim}/,/#{delim}/c #{replace}' #{hosts_file}
-        if ! grep -q "#{delim}" #{hosts_file}; then
-          echo -e "#{replace}" >> #{hosts_file}
+        sed -i.bak '/#{delim}/,/#{delim}/c #{replace}' /etc/hosts
+        if ! grep -q "#{delim}" /etc/hosts; then
+          echo -e "#{replace}" >> /etc/hosts
         fi
       ENDSCRIPT
 
@@ -285,8 +320,23 @@ namespace :rubber do
     Install extra packages and gems.
   DESC
   task :install do
+    install_core_packages
     install_packages
     install_gems
+  end
+
+  desc <<-DESC
+    Install core packages that are needed before the general install_packages phase.
+  DESC
+  task :install_core_packages do
+    core_packages = [
+        'python-software-properties', # Needed for add-apt-repository, which we use for adding PPAs.
+        'bc',                         # Needed for comparing version numbers in bash, which we do for various setup functions.
+        'update-notifier-common'      # Needed for notifying us when a package upgrade requires a reboot.
+    ]
+
+    rsudo "apt-get -q update"
+    rsudo "export DEBIAN_FRONTEND=noninteractive; apt-get -q -o Dpkg::Options::=--force-confold -y --force-yes install #{core_packages.join(' ')}"
   end
 
   desc <<-DESC
