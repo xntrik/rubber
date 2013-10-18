@@ -101,7 +101,7 @@ module Rubber
         # first grab all the roles from the project
         roles = []
         roles.concat Dir["#{destination_root}/config/rubber/role/*"].collect {|f| File.basename(f) }
-        roles.concat Dir["#{destination_root}/script/*/role/*"].collect {|f| File.basename(f) }
+        roles.concat Dir["#{destination_root}/bin/*/role/*"].collect {|f| File.basename(f) }
         Dir["#{destination_root}/config/rubber/rubber*.yml"].each do |yml|
           rubber_yml = YAML.load(File.read(yml)) rescue {}
           roles.concat(rubber_yml['roles'].keys) rescue nil

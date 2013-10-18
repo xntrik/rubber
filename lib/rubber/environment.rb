@@ -71,7 +71,7 @@ module Rubber
         roles.concat Dir["#{@config_root}/role/*"].collect {|f| File.basename(f) }
         
         # all the roles known about in script directory
-        roles.concat Dir["#{Rubber.root}/script/*/role/*"].collect {|f| File.basename(f) }
+        roles.concat Dir["#{Rubber.root}/bin/*/role/*"].collect {|f| File.basename(f) }
         
         # all the roles known about in yml files
         Dir["#{@config_root}/rubber*.yml"].each do |yml|
