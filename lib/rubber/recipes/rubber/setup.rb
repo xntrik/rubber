@@ -119,7 +119,7 @@ namespace :rubber do
         end
       end
 
-      local_hosts << ic.external_ip << ' ' << hosts_data.join(' ') << "\n"
+      local_hosts << ic.connection_ip << ' ' << hosts_data.join(' ') << "\n"
     end
     local_hosts << delim << "\n"
 
