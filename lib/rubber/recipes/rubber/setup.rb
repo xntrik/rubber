@@ -479,6 +479,7 @@ namespace :rubber do
       # graphite web app)
       if instance_item.role_names.include?('web_tools')
         Array(rubber_env.web_tools_proxies).each do |name, settings|
+          name = name.gsub('_', '-')
           provider.update("#{name}-#{instance_item.name}", instance_item.external_ip)
         end
       end
@@ -518,7 +519,11 @@ namespace :rubber do
 
     rsudo "apt-get -q update"
     if upgrade
-      rsudo "export DEBIAN_FRONTEND=noninteractive; apt-get -q -o Dpkg::Options::=--force-confold -y --force-yes dist-upgrade"
+      if ENV['NO_DIST_UPGRADE']
+        rsudo "export DEBIAN_FRONTEND=noninteractive; apt-get -q -o Dpkg::Options::=--force-confold -y --force-yes upgrade"
+      else
+        rsudo "export DEBIAN_FRONTEND=noninteractive; apt-get -q -o Dpkg::Options::=--force-confold -y --force-yes dist-upgrade"
+      end
     else
       rsudo "export DEBIAN_FRONTEND=noninteractive; apt-get -q -o Dpkg::Options::=--force-confold -y --force-yes install $CAPISTRANO:VAR$", opts
     end
@@ -560,6 +565,8 @@ namespace :rubber do
       end
 
       reboot = get_env('REBOOT', "Updates require a reboot on hosts #{reboot_hosts.inspect}, reboot [y/N]?", false)
+      ENV['REBOOT'] = reboot # `get_env` chomps the REBOOT value of the env, so reset it here so the value is retained across multiple calls.
+
       reboot = (reboot =~ /^y/)
 
       if reboot
