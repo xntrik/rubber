@@ -79,6 +79,7 @@ namespace :rubber do
   end
 
   def attach_volume(vol_id, instance_id, device)
+    logger.info "Attaching volume (id: #{vol_id}) for instance: #{instance_id}; device: #{device}"
     cloud.attach_volume(vol_id, instance_id, device)
   end
 
@@ -89,7 +90,10 @@ namespace :rubber do
     vol_id = artifacts['volumes'][key]
 
     # first create the volume if we don't have a global record (artifacts) for it
-    if ! vol_id
+    if vol_id
+      # check to make sure the volume exists.
+      # if it does not actually exist in EC2, then we need to throw an error / create the volume.
+    else
       logger.info "Creating volume for #{ic.full_name}:#{vol_spec['device']}"
       vol_id = create_volume(vol_spec['size'], vol_spec['zone'])
       artifacts['volumes'][key] = vol_id
@@ -116,10 +120,11 @@ namespace :rubber do
 
       # we don't mount/format at this time if we are doing a RAID array
       if vol_spec['mount'] && vol_spec['filesystem']
+        logger.info "Formatting and mounting volume"
         # then format/mount/etc if we don't have an entry in hosts file
         task :_setup_volume, :hosts => ic.connection_ip do
           rubber.sudo_script 'setup_volume', <<-ENDSCRIPT
-            if ! grep -q '#{vol_spec['mount']}' /etc/fstab; then
+            if ! grep -q '#{vol_spec['device']}' /etc/fstab; then
               if mount | grep -q '#{vol_spec['mount']}'; then
                 umount '#{vol_spec['mount']}'
               fi
@@ -136,7 +141,7 @@ namespace :rubber do
 		          # Ensure volume is ready before running mkfs on it.
 		          echo 'Waiting for device'
               cnt=0
-              while ! [[ -b $device ]]; do
+              while [[ ! -b $device ]]; do
                 if [[ "$cnt" -eq "15" ]]; then
                   echo 'Timed out waiting for EBS device to be ready.'
                   mv /etc/fstab.bak /etc/fstab
@@ -223,7 +228,7 @@ namespace :rubber do
             echo -n .
             sleep 5
           done
-          
+
           # this returns exit code even if pid has already died, and thus triggers fail fast shell error
           wait $bg_pid
         ENDSCRIPT
