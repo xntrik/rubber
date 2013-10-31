@@ -665,13 +665,11 @@ namespace :rubber do
     # to do the two groups separately
     # install versioned ones first so unversioned don't pull in a newer version
     to_install_ver.each do |g, v|
-      echo "#{cmd} #{g} -v #{v}"
       system "#{cmd} #{g} -v #{v}"
       fail "Unable to install versioned gem #{g}:#{v}" if $?.exitstatus > 0
     end
     if to_install.size > 0
       gem_list = to_install.keys.join(' ')
-      echo "#{cmd} #{gem_list}"
       system "#{cmd} #{gem_list}"
       fail "Unable to install gems" if $?.exitstatus > 0
     end
