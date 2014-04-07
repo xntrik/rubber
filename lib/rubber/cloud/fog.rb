@@ -173,7 +173,6 @@ module Rubber
       def should_destroy_volume_when_instance_destroyed?
         false
       end
-    end
 
       # resource_id is any Amazon resource ID (e.g., instance ID or volume ID)
       # tags is a hash of tag_name => tag_value pairs
